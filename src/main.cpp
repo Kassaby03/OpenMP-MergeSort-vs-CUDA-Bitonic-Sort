@@ -6,6 +6,7 @@
 #include <fstream>
 #include "utils.h"
 #include "sort/serial_sort.h"
+#include "sort/omp_sort.h"
 
 using namespace std;
 
@@ -20,6 +21,7 @@ void printHelp() {
     cout << "  --block-size INT     CUDA block size" << endl;
     cout << "  --repeats INT        Number of runs for averaging" << endl;
     cout << "  --output STR         CSV output file path" << endl;
+    cout << "  --cutoff INT         OpenMP serial cutoff limit" << endl;
     cout << "  --help               Show this message" << endl;
 }
 
@@ -31,6 +33,7 @@ int main(int argc, char** argv) {
     int numThreads = 1;
     int blockSize = 256;
     int numRepeats = 5;
+    long cutoff = 10000;
     string outFile = "results/results.csv";
 
     for (int i = 1; i < argc; i++) {
@@ -49,6 +52,8 @@ int main(int argc, char** argv) {
             blockSize = atoi(argv[++i]);
         } else if (arg == "--repeats" && i + 1 < argc) {
             numRepeats = atoi(argv[++i]);
+        } else if (arg == "--cutoff" && i + 1 < argc) {
+            cutoff = atol(argv[++i]);
         } else if (arg == "--output" && i + 1 < argc) {
             outFile = argv[++i];
         } else if (arg == "--help") {
@@ -78,8 +83,7 @@ int main(int argc, char** argv) {
         if (impl == "serial") {
             serialSort(myArr);
         } else if (impl == "omp") {
-            cout << "OpenMP not available in this version." << endl;
-            return 1;
+            ompSort(myArr, numThreads, cutoff);
         } else if (impl == "cuda") {
             cout << "CUDA not available in this version." << endl;
             return 1;

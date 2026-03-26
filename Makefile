@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -O3 -Wall -Iinclude
+CXXFLAGS = -O3 -Wall -fopenmp -Iinclude
 
 SRCDIR = src
 BINDIR = bin

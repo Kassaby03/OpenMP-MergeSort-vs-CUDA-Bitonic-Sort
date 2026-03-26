@@ -1,0 +1,13 @@
+=== OS & CPU ===
+Linux mahmoud-ideapad-gaming-3-15ach6 6.8.0-106-generic #106-Ubuntu SMP PREEMPT_DYNAMIC Fri Mar  6 07:58:08 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+CPU(s):                                  16
+Model name:                              AMD Ryzen 7 5800H with Radeon Graphics
+NUMA node0 CPU(s):                       0-15
+
+=== GPU ===
+name, memory.total [MiB], driver_version
+NVIDIA GeForce RTX 3050 Laptop GPU, 4096 MiB, 580.126.09
+
+=== COMPILER ===
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+Build cuda_12.0.r12.0/compiler.32267302_0

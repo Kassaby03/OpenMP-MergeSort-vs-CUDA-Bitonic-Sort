@@ -3,7 +3,9 @@
 #include <random>
 #include <algorithm>
 #include <sys/time.h>
+
 using namespace std;
+
 vector<int> generateArray(long arrSize, const string& distType, int seed) {
     vector<int> arr;
     try {
@@ -13,6 +15,7 @@ vector<int> generateArray(long arrSize, const string& distType, int seed) {
         exit(1);
     }
     mt19937 gen(seed);
+
     if (distType == "uniform") {
         uniform_int_distribution<long> dist(0, 10000000);
         for (long i = 0; i < arrSize; i++) {
@@ -29,6 +32,7 @@ vector<int> generateArray(long arrSize, const string& distType, int seed) {
             arr[i] = dist(gen);
         }
         sort(arr.begin(), arr.end());
+        
         uniform_int_distribution<long> idxDist(0, arrSize - 1);
         long numSwaps = arrSize / 100;
         for (long i = 0; i < numSwaps; i++) {
@@ -51,8 +55,10 @@ vector<int> generateArray(long arrSize, const string& distType, int seed) {
             arr[i] = dist(gen);
         }
     }
+    
     return arr;
 }
+
 bool checkSorted(const vector<int>& arr) {
     long arrSize = arr.size();
     if (arrSize == 0) return true;
@@ -63,6 +69,7 @@ bool checkSorted(const vector<int>& arr) {
     }
     return true;
 }
+
 double getTime() {
     struct timeval tp;
     gettimeofday(&tp, NULL);

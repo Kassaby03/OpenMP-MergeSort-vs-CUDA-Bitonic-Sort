@@ -25,9 +25,7 @@ void mergeArrays(vector<int>& arr, vector<int>& temp, long left, long mid, long 
         temp[k++] = arr[j++];
     }
 
-    for (long idx = left; idx <= right; idx++) {
-        arr[idx] = temp[idx];
-    }
+    copy(temp.begin() + left, temp.begin() + right + 1, arr.begin() + left);
 }
 
 void mergeSortOmp(vector<int>& arr, vector<int>& temp, long left, long right, long cutoff) {
@@ -54,9 +52,12 @@ void mergeSortOmp(vector<int>& arr, vector<int>& temp, long left, long right, lo
 void ompSort(vector<int>& arr, int numThreads, long cutoff) {
     long arrSize = arr.size();
     if (arrSize < 2) return;
+    if (numThreads <= 0) numThreads = 1;
+    if (cutoff <= 0) cutoff = 1;
 
     vector<int> temp(arrSize);
     
+    omp_set_dynamic(0); 
     omp_set_num_threads(numThreads);
 
     #pragma omp parallel

@@ -4,11 +4,28 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <exception>
+#include <algorithm>
 #include "utils.h"
 #include "sort/serial_sort.h"
 #include "sort/omp_sort.h"
+#ifdef HAS_CUDA
+#include "sort/cuda_sort.h"
+#include <cuda_runtime.h>
+#endif
 
 using namespace std;
+
+bool isValidDistribution(const string& distType) {
+    return distType == "uniform" ||
+           distType == "gaussian" ||
+           distType == "nearly_sorted" ||
+           distType == "reversed";
+}
+
+bool isValidImplementation(const string& impl) {
+    return impl == "serial" || impl == "omp" || impl == "cuda";
+}
 
 void printHelp() {
     cout << "Usage: ./sort_app [options]" << endl;
@@ -66,43 +83,116 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (arrSize <= 0) {
+        cout << "Error: --size must be > 0" << endl;
+        return 1;
+    }
+    if (numRepeats <= 0) {
+        cout << "Error: --repeats must be > 0" << endl;
+        return 1;
+    }
+    if (!isValidDistribution(distType)) {
+        cout << "Error: invalid --distribution value: " << distType << endl;
+        printHelp();
+        return 1;
+    }
+    if (!isValidImplementation(impl)) {
+        cout << "Error: invalid --impl value: " << impl << endl;
+        printHelp();
+        return 1;
+    }
+    if (impl == "omp" && numThreads <= 0) {
+        cout << "Error: --threads must be > 0 for omp" << endl;
+        return 1;
+    }
+    if (impl == "omp" && cutoff <= 0) {
+        cout << "Error: --cutoff must be > 0 for omp" << endl;
+        return 1;
+    }
+    if (impl == "cuda" && blockSize <= 0) {
+        cout << "Error: --block-size must be > 0 for cuda" << endl;
+        return 1;
+    }
+
     cout << "--- Sorting Experiment ---" << endl;
+    
+#ifdef HAS_CUDA
+    cout << "Build mode: CUDA enabled" << endl;
+#else
+    cout << "Build mode: CPU-only (CUDA not compiled)" << endl;
+#endif
     cout << "Size: " << arrSize << ", Dist: " << distType << ", Seed: " << seed << endl;
     cout << "Impl: " << impl << ", Repeats: " << numRepeats << endl;
     if (impl == "omp") cout << "Threads: " << numThreads << endl;
     if (impl == "cuda") cout << "Block Size: " << blockSize << endl;
 
-    double totalTime = 0.0;
+#ifdef HAS_CUDA
+    if (impl == "cuda") {
+        cudaError_t warmErr = cudaFree(0);
+        if (warmErr != cudaSuccess) {
+            cerr << "CUDA warmup failed: " << cudaGetErrorString(warmErr) << endl;
+            return 1;
+        }
+    }
+#endif
+
+    double totalTimeMs = 0.0;
+    double totalH2D = 0.0;
+    double totalComp = 0.0;
+    double totalD2H = 0.0;
     bool isSorted = true;
 
     for (int run = 0; run < numRepeats; run++) {
         vector<int> myArr = generateArray(arrSize, distType, seed + run);
+        vector<int> referenceArr = myArr; 
 
-        double startTime = getTime();
+        double runTimeMs = 0.0;
 
-        if (impl == "serial") {
-            serialSort(myArr);
-        } else if (impl == "omp") {
-            ompSort(myArr, numThreads, cutoff);
-        } else if (impl == "cuda") {
-            cout << "CUDA not available in this version." << endl;
-            return 1;
-        } else {
-            cout << "Unknown implementation: " << impl << endl;
+        try {
+            if (impl == "serial") {
+                double startTimeMs = getTime();
+                serialSort(myArr);
+                double endTimeMs = getTime();
+                runTimeMs = endTimeMs - startTimeMs;
+            } else if (impl == "omp") {
+                double startTimeMs = getTime();
+                ompSort(myArr, numThreads, cutoff);
+                double endTimeMs = getTime();
+                runTimeMs = endTimeMs - startTimeMs;
+            } else if (impl == "cuda") {
+#ifdef HAS_CUDA
+                double startTimeMs = getTime();
+                CudaSortTimes times = cudaSort(myArr, blockSize);
+                double endTimeMs = getTime();
+                
+                runTimeMs = endTimeMs - startTimeMs; 
+                totalH2D += times.h2d_ms;
+                totalComp += times.compute_ms;
+                totalD2H += times.d2h_ms;
+#else
+                cout << "CUDA not available in this build (nvcc not found at compile time)." << endl;
+                return 1;
+#endif
+            } else {
+                cout << "Unknown implementation: " << impl << endl;
+                return 1;
+            }
+        } catch (const exception& e) {
+            cerr << "Exception caught during run " << run + 1 << ": " << e.what() << endl;
             return 1;
         }
 
-        double endTime = getTime();
-        double runTime = endTime - startTime;
-        totalTime += runTime;
+        totalTimeMs += runTimeMs;
 
-        if (!checkSorted(myArr)) {
-            cout << "ERROR: Array is NOT sorted on run " << run + 1 << "!" << endl;
-            isSorted = false;
+        if (!checkSorted(referenceArr, myArr)) {
+            cerr << "ERROR: Array is NOT sorted on run " << run + 1 << "!" << endl;
+            cerr << "Aborting experiments due to logical sorting failure." << endl;
+            return 1; 
         }
     }
 
-    double avgTime = totalTime / numRepeats;
+    double avgTimeMs = totalTimeMs / numRepeats;
+
     cout << "\n=============================================" << endl;
     cout << "              FINAL SUMMARY                  " << endl;
     cout << "=============================================" << endl;
@@ -112,7 +202,22 @@ int main(int argc, char** argv) {
         cout << " Verified:        NO! (Sorting Failed)" << endl;
     }
     cout << " Elements Sorted: " << arrSize << endl;
-    cout << " Average Time:    " << avgTime << " s" << endl;
+    cout << " Time (Avg):      " << avgTimeMs << " ms" << endl;
+    
+    if (impl == "cuda") {
+        double avgH2D = totalH2D / numRepeats;
+        double avgComp = totalComp / numRepeats;
+        double avgD2H = totalD2H / numRepeats;
+        double totalEventTime = avgH2D + avgComp + avgD2H;
+        double overheadMs = std::max(0.0, avgTimeMs - totalEventTime);
+        double compPct = (totalEventTime > 0.0) ? ((avgComp / totalEventTime) * 100.0) : 0.0;
+        
+        cout << "   [GPU Hardware Timings Breakdown]" << endl;
+        cout << "   - H2D Trans:   " << avgH2D << " ms" << endl;
+        cout << "   - Compute:     " << avgComp << " ms (" << compPct << "% of GPU time)" << endl;
+        cout << "   - D2H Trans:   " << avgD2H << " ms" << endl;
+        cout << "   - API Overhead & Padding: " << overheadMs << " ms" << endl;
+    }
     cout << "=============================================\n" << endl;
 
     if (isSorted && outFile != "") {
@@ -121,10 +226,15 @@ int main(int argc, char** argv) {
             out << arrSize << "," << distType << "," << impl << ",";
             if (impl == "omp") out << numThreads << ",";
             else out << "NA,";
+            if (impl == "omp") out << cutoff << ",";
+            else out << "NA,";
             if (impl == "cuda") out << blockSize << ",";
             else out << "NA,";
-            out << numRepeats << "," << avgTime << "\n";
+            out << numRepeats << "," << avgTimeMs << "\n";
             out.close();
+        } else {
+            cerr << "ERROR: Could not open output CSV file: " << outFile << endl;
+            return 1;
         }
     }
 

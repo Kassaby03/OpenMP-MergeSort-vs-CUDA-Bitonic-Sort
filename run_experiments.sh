@@ -4,20 +4,21 @@ set -eo pipefail
 EXEC="./bin/sort_app"
 OUT="results/results.csv"
 
+mkdir -p results
+
 
 echo "Logging system info..."
 {
     echo "=== OS & CPU ==="
-    uname -a
     lscpu | grep -E "Model name|CPU\(s\):" || echo "lscpu unavailable"
     echo -e "\n=== GPU ==="
     nvidia-smi --query-gpu=gpu_name,memory.total,driver_version --format=csv || echo "nvidia-smi unavailable"
     echo -e "\n=== COMPILER ==="
     g++ --version | head -n 1
-    nvcc --version | tail -n 1
+    nvcc --version | tail -n 1 || echo "nvcc unavailable"
 } > results/system_info.txt
 
-echo "Size,Distribution,Implementation,Threads,BlockSize,Repeats,AvgTime(ms)" > $OUT
+echo "Size,Distribution,Implementation,Threads,Cutoff,BlockSize,Repeats,AvgTime(ms)" > $OUT
 
 REPEATS=5
 DISTRIBUTIONS=("uniform" "nearly_sorted" "gaussian" "reversed")
@@ -41,25 +42,27 @@ for size in "${SIZES[@]}"; do
     done
 done
 
-echo "Testing OpenMP Cutoffs..."
-CUTOFFS=(100 1000 10000 50000 100000)
-for c in "${CUTOFFS[@]}"; do
-    echo "Running OpenMP Cutoff=$c"
-    $EXEC --size 16777216 --impl omp --distribution uniform --threads 8 --cutoff $c --repeats $REPEATS --output $OUT
-done
-
 echo "Running CUDA..."
 BLOCK_SIZES=(128 256 512)
-for size in "${SIZES[@]}"; do
-    for dist in "${DISTRIBUTIONS[@]}"; do
-        for b in "${BLOCK_SIZES[@]}"; do
-            echo "Running CUDA: Size=$size Dist=$dist BlockSize=$b"
-            $EXEC --size $size --impl cuda --distribution $dist --block-size $b --repeats $REPEATS --output $OUT
+HAS_CUDA=0
+if $EXEC --size 10 --impl cuda --repeats 1 --output /dev/null >/dev/null 2>&1; then
+    HAS_CUDA=1
+fi
+
+if [[ "$HAS_CUDA" -eq 1 ]]; then
+    for size in "${SIZES[@]}"; do
+        for dist in "${DISTRIBUTIONS[@]}"; do
+            for b in "${BLOCK_SIZES[@]}"; do
+                echo "Running CUDA: Size=$size Dist=$dist BlockSize=$b"
+                $EXEC --size $size --impl cuda --distribution $dist --block-size $b --repeats $REPEATS --output $OUT
+            done
         done
     done
-done
+else
+    echo "CUDA not compiled in this binary; skipping CUDA experiments."
+fi
 
 echo "Experiments finished. CSV saved to $OUT"
 
 echo "Generating publication-ready plots..."
-python3 plot.py
+python3 plot.py || echo -e "\n[Warning] Python visualization failed. Performance data is safely stored in results/results.csv!"

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <random>
 #include <algorithm>
-#include <sys/time.h>
+#include <chrono>
 
 using namespace std;
 
@@ -59,11 +59,14 @@ vector<int> generateArray(long arrSize, const string& distType, int seed) {
     return arr;
 }
 
-bool checkSorted(const vector<int>& arr) {
-    long arrSize = arr.size();
-    if (arrSize == 0) return true;
-    for (long i = 0; i < arrSize - 1; i++) {
-        if (arr[i] > arr[i + 1]) {
+bool checkSorted(vector<int>& reference, const vector<int>& sorted) {
+    if (reference.size() != sorted.size()) {
+        return false;
+    }
+
+    sort(reference.begin(), reference.end());
+    for (size_t i = 0; i < reference.size(); i++) {
+        if (reference[i] != sorted[i]) {
             return false;
         }
     }
@@ -71,7 +74,7 @@ bool checkSorted(const vector<int>& arr) {
 }
 
 double getTime() {
-    struct timeval tp;
-    gettimeofday(&tp, NULL);
-    return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
+    using clock = std::chrono::steady_clock;
+    auto now = clock::now().time_since_epoch();
+    return std::chrono::duration<double, std::milli>(now).count();
 }

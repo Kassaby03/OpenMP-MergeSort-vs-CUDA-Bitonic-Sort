@@ -8,7 +8,7 @@ using namespace std;
 
 vector<int> generateArray(long arrSize, const string& distType, int seed);
 
-bool checkSorted(const vector<int>& arr);
+bool checkSorted(vector<int>& reference, const vector<int>& sorted);
 
 double getTime();
 

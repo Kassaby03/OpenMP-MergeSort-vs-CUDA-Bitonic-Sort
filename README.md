@@ -1,4 +1,4 @@
-# Project 2 — OpenMP MergeSort vs CUDA Bitonic Sort
+# OpenMP MergeSort vs CUDA Bitonic Sort
 
 ## Overview
 This project implements three highly-optimized sorting algorithms with a unified benchmarking CLI and an automated Python visualization pipeline:
